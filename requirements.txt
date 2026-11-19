@@ -7,3 +7,6 @@ pyarrow==16.1.0
 statsmodels==0.14.2
 torch==2.13.0
 rdkit==2026.9.1
+requests==2.32.3
+python-docx==1.1.2
+matplotlib==3.9.2
