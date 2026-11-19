@@ -6,13 +6,17 @@ adequate; if not, the acute endpoint itself is not time-stationary.
 
 Per within-study series with >= 4 distinct durations: fit the series' own LC50 against log10 duration, split the
 durations at the median, and compare the late-half slope with the early-half slope. Pooled tests cluster by study.
-Also: the share of series whose late-half slope is statistically indistinguishable from zero (a reached plateau),
+Also: the share of series with a strictly positive upper limit on the late slope,
 by the last observed duration, and the pooled late-half slope for series that extend beyond 96 h and beyond 14 d.
 """
 import sys
 import numpy as np, pandas as pd, statsmodels.formula.api as smf
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
 from common import load_lc50, R
+
+# A slope in log10 concentration per log10 hour. This tolerance removes round-off
+# when comparing a fitted slope or an interval endpoint with mathematical zero.
+ZERO_TOL = 1e-12
 
 x = load_lc50(min_h=1, max_h=24 * 60, include_censored=False)
 skey = ["reference_number", "test_cas", "species_number", "organism_lifestage", "exposure_type", "media_type",
@@ -36,11 +40,17 @@ for sid in n.index[n >= 4]:
     s2 = float(np.sum((yy - fit) ** 2) / dof)
     sxx = float(np.sum((tt - tt.mean()) ** 2))
     se_l = float(np.sqrt(s2 / sxx)) if sxx > 0 else np.nan
+    if np.ptp(y[:h + 1]) == 0 or abs(e_sl) <= ZERO_TOL:
+        e_sl = 0.0
+    if np.ptp(yy) == 0:
+        l_sl, se_l = 0.0, 0.0
+    elif abs(l_sl) <= ZERO_TOL:
+        l_sl = 0.0
     rows.append(dict(sid=sid, ref=d.ref.iloc[0], sp=d.sp.iloc[0], cas=d.cas.iloc[0], n_dur=len(d),
                      t_last_h=float(d.dur_h.max()), t_first_h=float(d.dur_h.min()),
                      early_slope=e_sl, late_slope=l_sl, late_minus_early=l_sl - e_sl, se_late=se_l))
 S = pd.DataFrame(rows)
-S["plateau"] = (S.late_slope + 1.96 * S.se_late > 0) & S.se_late.notna()
+S["plateau"] = (S.late_slope + 1.96 * S.se_late > ZERO_TOL) & S.se_late.notna()
 S.to_csv(R / "E15_plateau_series.csv", index=False)
 cl = lambda d: dict(cov_type="cluster", cov_kwds={"groups": pd.factorize(d.ref)[0]})
 out = []
